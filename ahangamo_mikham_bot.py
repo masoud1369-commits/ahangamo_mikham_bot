@@ -203,7 +203,6 @@ def main():
     application.add_handler(CallbackQueryHandler(choose_file_type, pattern='^video_\\d+$'))
     application.add_handler(CallbackQueryHandler(select_format, pattern='^filetype_(video|audio)_\\d+$'))
     application.add_handler(CallbackQueryHandler(send_download_link, pattern='^download_\\w+_\\d+$'))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_invalid_message))
 
     logger.info("ربات در حال اجراست...")
     application.run_polling()
