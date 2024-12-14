@@ -1,45 +1,46 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters, CallbackQueryHandler
+import yt_dlp
 import requests
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
 
 # فعال‌سازی لاگینگ
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TOKEN = '8023249611:AAFRiRypVo6BSt-N3vL0dtzMz4F0NgX_10Q'  # توکن ربات تلگرام خود را وارد کنید
-YOUTUBE_API_KEY = 'AIzaSyBhwd2T6v4wSlEV69euIUfnUlrmknynS2g'  # کلید API YouTube خود را وارد کنید
+TOKEN = '8023249611:AAFRiRypVo6BSt-N3vL0dtzMz4F0NgX_10Q'  # توکن ربات تلگرام
+YOUTUBE_API_KEY = 'AIzaSyBhwd2T6v4wSlEV69euIUfnUlrmknynS2g'  # کلید API YouTube
 session = requests.Session()
 
-# تابع ارسال دکمه‌ها
+# نگه‌داری نتایج جستجوی اخیر برای هر کاربر
+user_search_results = {}
+
+# تابع ارسال پیام خوشامدگویی
 async def send_welcome(update: Update, context: CallbackContext):
     keyboard = [
-        [InlineKeyboardButton("جستجوی ویدیو", callback_data='search')],
-        [InlineKeyboardButton("درباره ربات", callback_data='about')]
+        [InlineKeyboardButton("شروع", callback_data='start')],
+        [InlineKeyboardButton("راهنما", callback_data='help')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await update.message.reply_text(
-        "سلام! خوش آمدید به ربات جستجوی ویدیو. برای شروع یکی از گزینه‌ها را انتخاب کنید.",
+        "سلام! خوش آمدید به ربات جستجوی ویدیو. برای شروع دکمه 'شروع' را فشار دهید.",
         reply_markup=reply_markup
     )
 
-# تابع نمایش پیام توضیحی در مورد ربات
-async def explain_usage(update: Update, context: CallbackContext):
-    message = """
-    خوش آمدید به ربات جستجوی ویدیو! 
+# تابع ارسال راهنمایی
+async def send_help(update: Update, context: CallbackContext):
+    help_text = (
+        "دستورات ربات:\n\n"
+        "1. دکمه 'شروع' را فشار دهید تا شروع به جستجوی ویدیو کنید.\n"
+        "2. نام ویدیو را وارد کنید تا نتایج جستجو برای شما نمایش داده شود.\n"
+        "3. پس از انتخاب ویدیو، نوع فایل (ویدیو یا صوتی) را انتخاب کنید.\n"
+        "4. فرمت دلخواه خود (مانند mp4 360p یا MP3) را انتخاب کنید.\n"
+        "5. لینک دانلود برای شما ارسال می‌شود."
+    )
 
-    برای جستجوی یک ویدیو:
-    1. از دستور "/search <نام ویدیو>" استفاده کنید.
-    2. نام ویدیو را به صورت دقیق وارد کنید تا ربات بتواند آن را پیدا کند.
-    3. پس از وارد کردن نام ویدیو، ربات لینک ویدیو را از YouTube برای شما ارسال خواهد کرد.
-
-    برای مثال:
-    /search Bohemian Rhapsody
-    """
-    await update.callback_query.message.edit_text(message)
-    await update.callback_query.answer()
+    await update.message.reply_text(help_text)
 
 # تابع جستجو ویدیو
 async def search_video(update: Update, context: CallbackContext):
@@ -47,17 +48,16 @@ async def search_video(update: Update, context: CallbackContext):
     if not video_name:
         await update.message.reply_text("لطفاً نام ویدیو را وارد کنید.")
         return
-    
+
     try:
         # درخواست جستجو به YouTube API
         response = session.get("https://www.googleapis.com/youtube/v3/search", params={
             'part': 'snippet',
             'q': video_name,
             'key': YOUTUBE_API_KEY,
-            'maxResults': 1
+            'maxResults': 5
         })
 
-        # بررسی وضعیت پاسخ
         if response.status_code != 200:
             await update.message.reply_text(f"خطا در دریافت اطلاعات از API. وضعیت: {response.status_code}")
             logger.error(f"Request failed with status code {response.status_code}")
@@ -65,60 +65,129 @@ async def search_video(update: Update, context: CallbackContext):
 
         # تجزیه JSON
         data = response.json()
+        video_results = []
 
         if 'items' in data and data['items']:
-            video = data['items'][0]
-            video_title = video['snippet']['title']
-            video_description = video['snippet']['description']
-            video_url = f"https://www.youtube.com/watch?v={video['id']['videoId']}"
+            for item in data['items']:
+                video_title = item['snippet']['title']
+                video_description = item['snippet']['description']
+                video_id = item['id'].get('videoId', None)
 
-            await update.message.reply_text(
-                f"🎥 **{video_title}**\n\n"
-                f"📃 توضیحات: {video_description[:150]}...\n\n"
-                f"🔗 لینک ویدیو: {video_url}",
-                parse_mode='Markdown'
-            )
+                if video_id:
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    video_results.append({
+                        'title': video_title,
+                        'description': video_description,
+                        'url': video_url,
+                        'id': video_id
+                    })
+
+            if video_results:
+                user_search_results[update.message.chat_id] = video_results
+                await display_search_results(update, context, video_results)
+            else:
+                await update.message.reply_text("ویدیو مناسب پیدا نشد.")
         else:
             await update.message.reply_text("ویدیو پیدا نشد.")
     except requests.exceptions.RequestException as e:
         await update.message.reply_text("خطا در ارتباط با API.")
         logger.error(f"Request failed: {e}")
 
+# تابع نمایش نتایج جستجو
+async def display_search_results(update: Update, context: CallbackContext, video_results):
+    keyboard = []
+    for i, video in enumerate(video_results):
+        keyboard.append([InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "لطفاً یکی از ویدیوها را انتخاب کنید:\n\n" + "\n".join([f"{i+1}. {video['title']}" for i, video in enumerate(video_results)]),
+        reply_markup=reply_markup
+    )
+
+# تابع انتخاب نوع فایل (ویدیو یا صوتی)
+async def choose_file_type(update: Update, context: CallbackContext):
+    query = update.callback_query
+    video_index = int(query.data.split("_")[1])
+    selected_video = user_search_results[query.message.chat_id][video_index]
+
+    keyboard = [
+        [InlineKeyboardButton("🎥 ویدیو", callback_data=f"filetype_video_{video_index}"),
+         InlineKeyboardButton("🎵 صوتی", callback_data=f"filetype_audio_{video_index}")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.edit_text(f"شما ویدیوی زیر را انتخاب کرده‌اید:\n\n🎥 {selected_video['title']}\n\nلطفاً نوع فایل را انتخاب کنید:",
+                                  reply_markup=reply_markup)
+    await query.answer()
+
+# تابع انتخاب فرمت فایل
+async def select_format(update: Update, context: CallbackContext):
+    query = update.callback_query
+    data = query.data
+    video_index = int(data.split("_")[2])
+    selected_video = user_search_results[query.message.chat_id][video_index]
+
+    if "video" in data:
+        formats = ["mp4 360p", "mp4 240p", "mp4 144p"]
+        file_type = "ویدیویی"
+    else:
+        formats = ["MP3", "AAC"]
+        file_type = "صوتی"
+
+    keyboard = [[InlineKeyboardButton(format, callback_data=f"download_{format.replace(' ', '_').lower()}_{video_index}")] for format in formats]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.edit_text(f"ویدیوی انتخابی: {selected_video['title']}\n\nلطفاً فرمت {file_type} مورد نظر خود را انتخاب کنید:",
+                                  reply_markup=reply_markup)
+    await query.answer()
+
+# تابع ارسال لینک دانلود
+async def send_download_link(update: Update, context: CallbackContext):
+    query = update.callback_query
+    data = query.data
+    format_type, video_index = data.split("_")[1], int(data.split("_")[2])
+    selected_video = user_search_results[query.message.chat_id][video_index]
+
+    # استفاده از yt-dlp برای دریافت لینک دانلود
+    ydl_opts = {
+        'format': format_type,  # انتخاب فرمت
+        'outtmpl': '%(id)s.%(ext)s',  # مسیر ذخیره فایل (در اینجا فقط لینک دانلود داده می‌شود)
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        result = ydl.extract_info(selected_video['url'], download=False)  # فقط اطلاعات را استخراج می‌کند
+        download_link = result.get('url', None)  # لینک دانلود معتبر
+
+    if download_link:
+        await query.message.edit_text(f"✅ فایل آماده است!\n\n🎥 ویدیو: {selected_video['title']}\n🔗 لینک دانلود: {download_link}")
+    else:
+        await query.message.edit_text(f"❌ متاسفانه دانلود این ویدیو امکان‌پذیر نیست.")
+    await query.answer()
+
+# تابع فیلتر پیام‌های غیرمجاز
+async def filter_invalid_message(update: Update, context: CallbackContext):
+    await update.message.reply_text("لطفاً از دکمه‌های مشخص شده استفاده کنید. ارسال پیام به صورت مستقیم مجاز نیست.")
+
 # تابع شروع
 async def start(update: Update, context: CallbackContext):
     await send_welcome(update, context)
 
-# تابع ارسال اطلاعات درباره ربات
-async def about_robot(update: Update, context: CallbackContext):
-    message = """
-    این ربات برای جستجوی ویدیوها از YouTube استفاده می‌کند.
-    
-    امکانات:
-    - جستجوی ویدیوها بر اساس نام
-    - ارسال لینک ویدیو به همراه توضیحات
-    
-    برای شروع، از دکمه‌ها یا دستورات استفاده کنید.
-    """
-    await update.callback_query.message.edit_text(message)
-    await update.callback_query.answer()
-
 # اصلی‌ترین تابع
 def main():
-    try:
-        application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).build()
 
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("search", search_video))  # جستجو در YouTube
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_video))  # جستجو در YouTube
+    # دستورات و دکمه‌ها
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("search", search_video))
+    application.add_handler(CommandHandler("help", send_help))  # افزودن راهنما
+    application.add_handler(CallbackQueryHandler(choose_file_type, pattern='^video_\\d+$'))
+    application.add_handler(CallbackQueryHandler(select_format, pattern='^filetype_(video|audio)_\\d+$'))
+    application.add_handler(CallbackQueryHandler(send_download_link, pattern='^download_\\w+_\\d+$'))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_invalid_message))
 
-        # دکمه‌های مربوط به ربات
-        application.add_handler(CallbackQueryHandler(explain_usage, pattern='^search$'))
-        application.add_handler(CallbackQueryHandler(about_robot, pattern='^about$'))
-
-        logger.info("ربات در حال اجراست...")
-        application.run_polling()
-    except Exception as e:
-        logger.error(f"خطای غیرمنتظره: {e}")
+    logger.info("ربات در حال اجراست...")
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
