@@ -189,27 +189,17 @@ async def send_download_link(update: Update, context: CallbackContext):
 
     logger.info(f"User selected format ID: {format_id} for video: {selected_video['title']}")
 
-    ydl_opts = {
-        'format': format_id,
-        'outtmpl': '%(title)s.%(ext)s',  # نام فایل خروجی
-        'quiet': True,  # خاموش کردن نمایش اطلاعات اضافی
-        'cookies': COOKIES_PATH  # استفاده از کوکی‌ها
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            logger.info("Fetching download link for the selected format")
-            result = ydl.extract_info(selected_video['url'], download=False)
-            download_url = result.get('url', None)
+        # تغییر آدرس ویدیو برای استفاده از youtubepp
+        original_url = selected_video['url']
+        modified_url = original_url.replace("youtube.com", "youtubepp.com")
 
-        if download_url:
-            logger.info("Download link fetched successfully")
-            await query.message.edit_text(f"Download link for '{selected_video['title']}':\n\n{download_url}")
-        else:
-            logger.warning("Download link not found in the extracted data")
-            await query.message.edit_text("❌ Failed to fetch the download link. Please try again later.")
-    except yt_dlp.utils.ExtractorError as e:
-        logger.error(f"Error fetching download link: {e}")
+        logger.info("Modified YouTube URL for download: " + modified_url)
+
+        # ارسال لینک تغییر یافته به کاربر
+        await query.message.edit_text(f"Download link for '{selected_video['title']}':\n\n{modified_url}")
+    except Exception as e:
+        logger.error(f"Error modifying the download link: {e}")
         await query.message.edit_text("❌ Failed to fetch the download link. Please try again later.")
 
     await query.answer()
@@ -232,4 +222,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
