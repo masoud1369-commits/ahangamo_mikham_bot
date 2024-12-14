@@ -70,14 +70,12 @@ async def search_video(update: Update, context: CallbackContext):
         if 'items' in data and data['items']:
             for item in data['items']:
                 video_title = item['snippet']['title']
-                video_description = item['snippet']['description']
                 video_id = item['id'].get('videoId', None)
 
                 if video_id:
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
                     video_results.append({
                         'title': video_title,
-                        'description': video_description,
                         'url': video_url,
                         'id': video_id
                     })
@@ -95,13 +93,12 @@ async def search_video(update: Update, context: CallbackContext):
 
 # تابع نمایش نتایج جستجو
 async def display_search_results(update: Update, context: CallbackContext, video_results):
-    keyboard = []
-    for i, video in enumerate(video_results):
-        keyboard.append([InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}")])
-
+    keyboard = [
+        [InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}") for i, video in enumerate(video_results)]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "لطفاً یکی از ویدیوها را انتخاب کنید:\n\n" + "\n".join([f"{i+1}. {video['title']}" for i, video in enumerate(video_results)]),
+        "لطفاً یکی از ویدیوها را انتخاب کنید:",
         reply_markup=reply_markup
     )
 
@@ -125,7 +122,7 @@ async def choose_file_type(update: Update, context: CallbackContext):
 async def select_format(update: Update, context: CallbackContext):
     query = update.callback_query
     data = query.data
-    video_index = int(data.split("_")[2])  # استخراج ایندکس ویدیو
+    video_index = int(data.split("_")[2])
     selected_video = user_search_results[query.message.chat_id][video_index]
 
     # استفاده از yt-dlp برای استخراج فرمت‌های قابل دانلود
@@ -145,11 +142,9 @@ async def select_format(update: Update, context: CallbackContext):
         await query.answer()
         return
 
-    keyboard = []
-    for f in formats:
-        format_str = f'{f["ext"]} {f["height"] if "height" in f else ""}'  # نمایش فرمت به صورت 'mp4 360p' یا 'mp3'
-        format_callback = f"download_{f['format_id']}_{video_index}"  # ID فرمت برای دانلود
-        keyboard.append([InlineKeyboardButton(format_str, callback_data=format_callback)])
+    keyboard = [
+        [InlineKeyboardButton(f'{f["ext"]} {f["height"] if "height" in f else ""}', callback_data=f"download_{f['format_id']}_{video_index}") for f in formats]
+    ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.edit_text(f"ویدیوی انتخابی: {selected_video['title']}\n\nلطفاً فرمت مورد نظر خود را انتخاب کنید:",
@@ -160,23 +155,21 @@ async def select_format(update: Update, context: CallbackContext):
 async def send_download_link(update: Update, context: CallbackContext):
     query = update.callback_query
     data = query.data
-    
-    # استخراج فرمت و ایندکس ویدیو
     parts = data.split("_")
-    format_id = parts[1]  # ID فرمت
-    video_index = int(parts[2])  # ایندکس ویدیو
+    format_id = parts[1]
+    video_index = int(parts[2])
 
     selected_video = user_search_results[query.message.chat_id][video_index]
 
     # استفاده از yt-dlp برای دریافت لینک دانلود
     ydl_opts = {
-        'format': format_id,  # استفاده از ID فرمت برای انتخاب فرمت
+        'format': format_id,
         'outtmpl': '%(id)s.%(ext)s',  # مسیر ذخیره فایل (در اینجا فقط لینک دانلود داده می‌شود)
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        result = ydl.extract_info(selected_video['url'], download=False)  # فقط اطلاعات را استخراج می‌کند
-        download_link = result.get('url', None)  # لینک دانلود معتبر
+        result = ydl.extract_info(selected_video['url'], download=False)
+        download_link = result.get('url', None)
 
     if download_link:
         await query.message.edit_text(f"✅ فایل آماده است!\n\n🎥 ویدیو: {selected_video['title']}\n🔗 لینک دانلود: {download_link}")
@@ -199,7 +192,7 @@ def main():
     # دستورات و دکمه‌ها
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("search", search_video))
-    application.add_handler(CommandHandler("help", send_help))  # افزودن راهنما
+    application.add_handler(CommandHandler("help", send_help))  
     application.add_handler(CallbackQueryHandler(choose_file_type, pattern='^video_\\d+$'))
     application.add_handler(CallbackQueryHandler(select_format, pattern='^filetype_(video|audio)_\\d+$'))
     application.add_handler(CallbackQueryHandler(send_download_link, pattern='^download_\\w+_\\d+$'))
