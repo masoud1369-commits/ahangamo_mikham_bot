@@ -149,28 +149,33 @@ async def select_format(update: Update, context: CallbackContext):
     ydl_opts = {
         'format': 'bestaudio/bestvideo',  # انتخاب بهترین کیفیت
         'noplaylist': True,  # فقط ویدیو یکسان را بگیرد، نه لیست پخش
-        'quiet': True  # خاموش کردن نمایش اطلاعات اضافی
+        'quiet': True,  # خاموش کردن نمایش اطلاعات اضافی
+        'cookies': COOKIES_PATH  # استفاده از کوکی‌ها برای دور زدن محدودیت‌ها
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        result = ydl.extract_info(selected_video['url'], download=False)  # فقط اطلاعات را استخراج می‌کند
-        formats = result.get('formats', [])
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(selected_video['url'], download=False)  # فقط اطلاعات را استخراج می‌کند
+            formats = result.get('formats', [])
 
-    # ساخت دکمه‌های فرمت
-    if not formats:
-        logger.warning("No downloadable formats available for the selected video")
-        await query.message.edit_text("❌ No downloadable formats available for this video.")
+        # ساخت دکمه‌های فرمت
+        if not formats:
+            logger.warning("No downloadable formats available for the selected video")
+            await query.message.edit_text("❌ No downloadable formats available for this video.")
+            await query.answer()
+            return
+
+        keyboard = [
+            [InlineKeyboardButton(f'{f["ext"]} {f["height"] if "height" in f else ""}', callback_data=f"download_{f['format_id']}_{video_index}") for f in formats]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(f"Selected video: {selected_video['title']}\n\nChoose format:",
+                                      reply_markup=reply_markup)
         await query.answer()
-        return
-
-    keyboard = [
-        [InlineKeyboardButton(f'{f["ext"]} {f["height"] if "height" in f else ""}', callback_data=f"download_{f['format_id']}_{video_index}") for f in formats]
-    ]
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.edit_text(f"Selected video: {selected_video['title']}\n\nChoose format:",
-                                  reply_markup=reply_markup)
-    await query.answer()
+    except yt_dlp.utils.ExtractorError as e:
+        logger.error(f"Error extracting formats: {e}")
+        await query.message.edit_text("❌ Failed to extract formats. Please try again later.")
 
 # تابع ارسال لینک دانلود
 async def send_download_link(update: Update, context: CallbackContext):
@@ -182,63 +187,49 @@ async def send_download_link(update: Update, context: CallbackContext):
 
     selected_video = user_search_results[query.message.chat_id][video_index]
 
-    logger.info(f"Preparing download link for video: {selected_video['title']} with format ID: {format_id}")
+    logger.info(f"User selected format ID: {format_id} for video: {selected_video['title']}")
 
-# استفاده از yt-dlp برای دریافت لینک دانلود
     ydl_opts = {
         'format': format_id,
-        'outtmpl': '%(id)s.%(ext)s',  # مسیر ذخیره فایل (در اینجا فقط لینک دانلود داده می‌شود)
+        'outtmpl': '%(title)s.%(ext)s',  # نام فایل خروجی
+        'quiet': True,  # خاموش کردن نمایش اطلاعات اضافی
+        'cookies': COOKIES_PATH  # استفاده از کوکی‌ها
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            logger.info("Fetching download link for the selected format")
             result = ydl.extract_info(selected_video['url'], download=False)
-            download_link = result.get('url', None)
+            download_url = result.get('url', None)
 
-        if download_link:
-            logger.info("Download link generated successfully")
-            download_link = shorten_url(download_link)
-            await query.message.edit_text(
-                f"✅ Your file is ready!\n\n🎥 Video: {selected_video['title']}\n🔗 Download link: {download_link}")
+        if download_url:
+            logger.info("Download link fetched successfully")
+            await query.message.edit_text(f"Download link for '{selected_video['title']}':\n\n{download_url}")
         else:
-            logger.error("Download link could not be generated")
-            await query.message.edit_text("❌ Unable to generate a download link for this video.")
-    except Exception as e:
-        logger.error(f"Error generating download link: {e}")
-        await query.message.edit_text("❌ Error generating the download link. Please try again later.")
+            logger.warning("Download link not found in the extracted data")
+            await query.message.edit_text("❌ Failed to fetch the download link. Please try again later.")
+    except yt_dlp.utils.ExtractorError as e:
+        logger.error(f"Error fetching download link: {e}")
+        await query.message.edit_text("❌ Failed to fetch the download link. Please try again later.")
 
     await query.answer()
 
-# تابع تبدیل لینک به کوتاه
-def shorten_url(url):
-    try:
-        logger.info("Shortening URL")
-        response = requests.get(f'https://api.shrtco.de/v2/shorten?url={url}')
-        if response.status_code == 201:
-            short_url = response.json()['result']['short_link']
-            logger.info(f"URL shortened successfully: {short_url}")
-            return short_url
-        logger.warning(f"Failed to shorten URL, using original: {url}")
-        return url
-    except Exception as e:
-        logger.error(f"Error shortening URL: {e}")
-        return url
-
-# اصلی‌ترین تابع
+# پیکربندی و اجرای ربات تلگرام
 def main():
-    logger.info("Starting the bot...")
+    logger.info("Starting the bot application")
     application = Application.builder().token(TOKEN).build()
 
-    # دستورات و دکمه‌ها
+    # ثبت هندلرها
     application.add_handler(CommandHandler("start", send_welcome))
-    application.add_handler(CommandHandler("search", search_video))
     application.add_handler(CommandHandler("help", send_help))
-    application.add_handler(CallbackQueryHandler(choose_file_type, pattern='^video_\\d+$'))
-    application.add_handler(CallbackQueryHandler(select_format, pattern='^filetype_(video|audio)_\\d+$'))
-    application.add_handler(CallbackQueryHandler(send_download_link, pattern='^download_\\w+_\\d+$'))
+    application.add_handler(CommandHandler("search", search_video))
+    application.add_handler(CallbackQueryHandler(choose_file_type, pattern=r"video_\d+"))
+    application.add_handler(CallbackQueryHandler(select_format, pattern=r"filetype_(video|audio)_\d+"))
+    application.add_handler(CallbackQueryHandler(send_download_link, pattern=r"download_\d+_\d+"))
 
-    logger.info("Bot is now running. Waiting for user commands...")
+    # اجرای ربات
     application.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+
