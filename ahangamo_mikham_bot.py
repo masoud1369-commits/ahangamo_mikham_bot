@@ -2,7 +2,7 @@ import logging
 import yt_dlp
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
 
 # فعال‌سازی لاگینگ
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -11,46 +11,56 @@ logger = logging.getLogger(__name__)
 
 TOKEN = '8023249611:AAFRiRypVo6BSt-N3vL0dtzMz4F0NgX_10Q'  # توکن ربات تلگرام
 YOUTUBE_API_KEY = 'AIzaSyBhwd2T6v4wSlEV69euIUfnUlrmknynS2g'  # کلید API YouTube
+COOKIES_PATH = 'cookies.txt'  # مسیر فایل کوکی
 session = requests.Session()
 
 # نگه‌داری نتایج جستجوی اخیر برای هر کاربر
 user_search_results = {}
 
+# دستوراتی که کاربر می‌تواند استفاده کند:
+# /start: نمایش پیام خوشامدگویی
+# /help: نمایش دستورالعمل‌ها و راهنمای استفاده از ربات
+# /search [video name]: جستجوی ویدیو در یوتیوب و نمایش نتایج
+
 # تابع ارسال پیام خوشامدگویی
 async def send_welcome(update: Update, context: CallbackContext):
+    logger.info("Handling /start command")
     keyboard = [
-        [InlineKeyboardButton("شروع", callback_data='start')],
-        [InlineKeyboardButton("راهنما", callback_data='help')]
+        [InlineKeyboardButton("Start", callback_data='start')],
+        [InlineKeyboardButton("Help", callback_data='help')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "سلام! خوش آمدید به ربات جستجوی ویدیو. برای شروع دکمه 'شروع' را فشار دهید.",
+        "Welcome! Use this bot to search and download YouTube videos. Press 'Start' to begin.",
         reply_markup=reply_markup
     )
 
 # تابع ارسال راهنمایی
 async def send_help(update: Update, context: CallbackContext):
+    logger.info("Handling /help command")
     help_text = (
-        "دستورات ربات:\n\n"
-        "1. دکمه 'شروع' را فشار دهید تا شروع به جستجوی ویدیو کنید.\n"
-        "2. نام ویدیو را وارد کنید تا نتایج جستجو برای شما نمایش داده شود.\n"
-        "3. پس از انتخاب ویدیو، نوع فایل (ویدیو یا صوتی) را انتخاب کنید.\n"
-        "4. فرمت دلخواه خود (مانند mp4 360p یا MP3) را انتخاب کنید.\n"
-        "5. لینک دانلود برای شما ارسال می‌شود."
+        "Commands:\n\n"
+        "1. /start: Start the bot and see the welcome message.\n"
+        "2. /help: Show usage instructions for the bot.\n"
+        "3. /search [video name]: Search for videos on YouTube by their name.\n"
+        "   - Example: /search funny cats\n"
+        "4. Follow the on-screen instructions to select video format and download."
     )
 
     await update.message.reply_text(help_text)
 
 # تابع جستجو ویدیو
 async def search_video(update: Update, context: CallbackContext):
+    logger.info("Handling /search command")
     video_name = ' '.join(context.args) if context.args else None
     if not video_name:
-        await update.message.reply_text("لطفاً نام ویدیو را وارد کنید.")
+        logger.warning("No video name provided in /search command")
+        await update.message.reply_text("Please provide a video name to search.")
         return
 
     try:
-        # درخواست جستجو به YouTube API
+        logger.info(f"Searching for video: {video_name}")
         response = session.get("https://www.googleapis.com/youtube/v3/search", params={
             'part': 'snippet',
             'q': video_name,
@@ -59,8 +69,8 @@ async def search_video(update: Update, context: CallbackContext):
         })
 
         if response.status_code != 200:
-            await update.message.reply_text(f"خطا در دریافت اطلاعات از API. وضعیت: {response.status_code}")
-            logger.error(f"Request failed with status code {response.status_code}")
+            logger.error(f"YouTube API request failed with status code {response.status_code}")
+            await update.message.reply_text(f"Error retrieving data from YouTube API. Status: {response.status_code}")
             return
 
         # تجزیه JSON
@@ -68,6 +78,7 @@ async def search_video(update: Update, context: CallbackContext):
         video_results = []
 
         if 'items' in data and data['items']:
+            logger.info("Parsing search results from YouTube API response")
             for item in data['items']:
                 video_title = item['snippet']['title']
                 video_id = item['id'].get('videoId', None)
@@ -81,24 +92,29 @@ async def search_video(update: Update, context: CallbackContext):
                     })
 
             if video_results:
+                logger.info("Search results found and stored")
                 user_search_results[update.message.chat_id] = video_results
                 await display_search_results(update, context, video_results)
             else:
-                await update.message.reply_text("ویدیو مناسب پیدا نشد.")
+                logger.warning("No suitable videos found in search results")
+                await update.message.reply_text("No suitable videos found.")
         else:
-            await update.message.reply_text("ویدیو پیدا نشد.")
+            logger.warning("No videos found in search response")
+            await update.message.reply_text("No videos found.")
     except requests.exceptions.RequestException as e:
-        await update.message.reply_text("خطا در ارتباط با API.")
-        logger.error(f"Request failed: {e}")
+        logger.error(f"Request to YouTube API failed: {e}")
+        await update.message.reply_text("Error connecting to YouTube API.")
 
 # تابع نمایش نتایج جستجو
 async def display_search_results(update: Update, context: CallbackContext, video_results):
+    logger.info("Displaying search results to user")
     keyboard = [
-        [InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}") for i, video in enumerate(video_results)]
+        [InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}")] for i, video in enumerate(video_results)
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        "لطفاً یکی از ویدیوها را انتخاب کنید:",
+        "Please select a video:",
         reply_markup=reply_markup
     )
 
@@ -108,13 +124,15 @@ async def choose_file_type(update: Update, context: CallbackContext):
     video_index = int(query.data.split("_")[1])
     selected_video = user_search_results[query.message.chat_id][video_index]
 
+    logger.info(f"User selected video: {selected_video['title']}")
+
     keyboard = [
-        [InlineKeyboardButton("🎥 ویدیو", callback_data=f"filetype_video_{video_index}"),
-         InlineKeyboardButton("🎵 صوتی", callback_data=f"filetype_audio_{video_index}")]
+        [InlineKeyboardButton("🎥 Video", callback_data=f"filetype_video_{video_index}"),
+         InlineKeyboardButton("🎵 Audio", callback_data=f"filetype_audio_{video_index}")]
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.edit_text(f"شما ویدیوی زیر را انتخاب کرده‌اید:\n\n🎥 {selected_video['title']}\n\nلطفاً نوع فایل را انتخاب کنید:",
+    await query.message.edit_text(f"You selected:\n\n🎥 {selected_video['title']}\n\nChoose file type:",
                                   reply_markup=reply_markup)
     await query.answer()
 
@@ -124,6 +142,8 @@ async def select_format(update: Update, context: CallbackContext):
     data = query.data
     video_index = int(data.split("_")[2])
     selected_video = user_search_results[query.message.chat_id][video_index]
+
+    logger.info(f"User is selecting format for video: {selected_video['title']}")
 
     # استفاده از yt-dlp برای استخراج فرمت‌های قابل دانلود
     ydl_opts = {
@@ -138,7 +158,8 @@ async def select_format(update: Update, context: CallbackContext):
 
     # ساخت دکمه‌های فرمت
     if not formats:
-        await query.message.edit_text("❌ متاسفانه فرمت‌های قابل دانلود برای این ویدیو موجود نیست.")
+        logger.warning("No downloadable formats available for the selected video")
+        await query.message.edit_text("❌ No downloadable formats available for this video.")
         await query.answer()
         return
 
@@ -147,7 +168,7 @@ async def select_format(update: Update, context: CallbackContext):
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.edit_text(f"ویدیوی انتخابی: {selected_video['title']}\n\nلطفاً فرمت مورد نظر خود را انتخاب کنید:",
+    await query.message.edit_text(f"Selected video: {selected_video['title']}\n\nChoose format:",
                                   reply_markup=reply_markup)
     await query.answer()
 
@@ -161,39 +182,51 @@ async def send_download_link(update: Update, context: CallbackContext):
 
     selected_video = user_search_results[query.message.chat_id][video_index]
 
-    # استفاده از yt-dlp برای دریافت لینک دانلود
+    logger.info(f"Preparing download link for video: {selected_video['title']} with format ID: {format_id}")
+
+# استفاده از yt-dlp برای دریافت لینک دانلود
     ydl_opts = {
         'format': format_id,
         'outtmpl': '%(id)s.%(ext)s',  # مسیر ذخیره فایل (در اینجا فقط لینک دانلود داده می‌شود)
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        result = ydl.extract_info(selected_video['url'], download=False)
-        download_link = result.get('url', None)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            result = ydl.extract_info(selected_video['url'], download=False)
+            download_link = result.get('url', None)
 
-    # تبدیل لینک به لینک کوتاه (در صورت نیاز)
-    if download_link:
-        download_link = shorten_url(download_link)
+        if download_link:
+            logger.info("Download link generated successfully")
+            download_link = shorten_url(download_link)
+            await query.message.edit_text(
+                f"✅ Your file is ready!\n\n🎥 Video: {selected_video['title']}\n🔗 Download link: {download_link}")
+        else:
+            logger.error("Download link could not be generated")
+            await query.message.edit_text("❌ Unable to generate a download link for this video.")
+    except Exception as e:
+        logger.error(f"Error generating download link: {e}")
+        await query.message.edit_text("❌ Error generating the download link. Please try again later.")
 
-    if download_link:
-        await query.message.edit_text(f"✅ فایل آماده است!\n\n🎥 ویدیو: {selected_video['title']}\n🔗 لینک دانلود: {download_link}")
-    else:
-        await query.message.edit_text(f"❌ متاسفانه دانلود این ویدیو امکان‌پذیر نیست.")
     await query.answer()
 
 # تابع تبدیل لینک به کوتاه
 def shorten_url(url):
     try:
+        logger.info("Shortening URL")
         response = requests.get(f'https://api.shrtco.de/v2/shorten?url={url}')
         if response.status_code == 201:
-            return response.json()['result']['short_link']
-        return url  # در صورت خطا، لینک اصلی باز می‌گردد
+            short_url = response.json()['result']['short_link']
+            logger.info(f"URL shortened successfully: {short_url}")
+            return short_url
+        logger.warning(f"Failed to shorten URL, using original: {url}")
+        return url
     except Exception as e:
         logger.error(f"Error shortening URL: {e}")
         return url
 
 # اصلی‌ترین تابع
 def main():
+    logger.info("Starting the bot...")
     application = Application.builder().token(TOKEN).build()
 
     # دستورات و دکمه‌ها
@@ -204,7 +237,7 @@ def main():
     application.add_handler(CallbackQueryHandler(select_format, pattern='^filetype_(video|audio)_\\d+$'))
     application.add_handler(CallbackQueryHandler(send_download_link, pattern='^download_\\w+_\\d+$'))
 
-    logger.info("ربات در حال اجراست...")
+    logger.info("Bot is now running. Waiting for user commands...")
     application.run_polling()
 
 if __name__ == '__main__':
