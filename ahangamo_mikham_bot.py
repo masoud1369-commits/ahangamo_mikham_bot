@@ -171,28 +171,35 @@ async def send_download_link(update: Update, context: CallbackContext):
         result = ydl.extract_info(selected_video['url'], download=False)
         download_link = result.get('url', None)
 
+    # تبدیل لینک به لینک کوتاه (در صورت نیاز)
+    if download_link:
+        download_link = shorten_url(download_link)
+
     if download_link:
         await query.message.edit_text(f"✅ فایل آماده است!\n\n🎥 ویدیو: {selected_video['title']}\n🔗 لینک دانلود: {download_link}")
     else:
         await query.message.edit_text(f"❌ متاسفانه دانلود این ویدیو امکان‌پذیر نیست.")
     await query.answer()
 
-# تابع فیلتر پیام‌های غیرمجاز
-async def filter_invalid_message(update: Update, context: CallbackContext):
-    await update.message.reply_text("لطفاً از دکمه‌های مشخص شده استفاده کنید. ارسال پیام به صورت مستقیم مجاز نیست.")
-
-# تابع شروع
-async def start(update: Update, context: CallbackContext):
-    await send_welcome(update, context)
+# تابع تبدیل لینک به کوتاه
+def shorten_url(url):
+    try:
+        response = requests.get(f'https://api.shrtco.de/v2/shorten?url={url}')
+        if response.status_code == 201:
+            return response.json()['result']['short_link']
+        return url  # در صورت خطا، لینک اصلی باز می‌گردد
+    except Exception as e:
+        logger.error(f"Error shortening URL: {e}")
+        return url
 
 # اصلی‌ترین تابع
 def main():
     application = Application.builder().token(TOKEN).build()
 
     # دستورات و دکمه‌ها
-    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("start", send_welcome))
     application.add_handler(CommandHandler("search", search_video))
-    application.add_handler(CommandHandler("help", send_help))  
+    application.add_handler(CommandHandler("help", send_help))
     application.add_handler(CallbackQueryHandler(choose_file_type, pattern='^video_\\d+$'))
     application.add_handler(CallbackQueryHandler(select_format, pattern='^filetype_(video|audio)_\\d+$'))
     application.add_handler(CallbackQueryHandler(send_download_link, pattern='^download_\\w+_\\d+$'))
