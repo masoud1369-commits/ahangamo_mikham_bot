@@ -135,18 +135,21 @@ async def select_format(update: Update, context: CallbackContext):
         formats = ["MP3", "AAC"]
         file_type = "صوتی"
 
-    keyboard = [[InlineKeyboardButton(format, callback_data=f"download_{format.replace(' ', '_').lower()}_{video_index}")] for format in formats]
+    keyboard = [
+        [InlineKeyboardButton(format, callback_data=f"download_{format.replace(' ', '_').lower()}_{video_index}") for format in formats]
+    ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.edit_text(f"ویدیوی انتخابی: {selected_video['title']}\n\nلطفاً فرمت {file_type} مورد نظر خود را انتخاب کنید:",
                                   reply_markup=reply_markup)
     await query.answer()
 
+
 # تابع ارسال لینک دانلود
 async def send_download_link(update: Update, context: CallbackContext):
     query = update.callback_query
     data = query.data
-    format_type, video_index = data.split("_")[1], int(data.split("_")[2])
+    format_type, video_index = data.split("_")[1], int(data.split("_")[2])  # جدا کردن فرمت و ایندکس
     selected_video = user_search_results[query.message.chat_id][video_index]
 
     # استفاده از yt-dlp برای دریافت لینک دانلود
@@ -164,6 +167,7 @@ async def send_download_link(update: Update, context: CallbackContext):
     else:
         await query.message.edit_text(f"❌ متاسفانه دانلود این ویدیو امکان‌پذیر نیست.")
     await query.answer()
+
 
 # تابع فیلتر پیام‌های غیرمجاز
 async def filter_invalid_message(update: Update, context: CallbackContext):
