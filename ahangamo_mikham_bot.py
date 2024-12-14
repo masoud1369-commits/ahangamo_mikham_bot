@@ -125,36 +125,52 @@ async def choose_file_type(update: Update, context: CallbackContext):
 async def select_format(update: Update, context: CallbackContext):
     query = update.callback_query
     data = query.data
-    video_index = int(data.split("_")[2])
+    video_index = int(data.split("_")[2])  # استخراج ایندکس ویدیو
     selected_video = user_search_results[query.message.chat_id][video_index]
 
-    if "video" in data:
-        formats = ["mp4 360p", "mp4 240p", "mp4 144p"]
-        file_type = "ویدیویی"
-    else:
-        formats = ["MP3", "AAC"]
-        file_type = "صوتی"
+    # استفاده از yt-dlp برای استخراج فرمت‌های قابل دانلود
+    ydl_opts = {
+        'format': 'bestaudio/bestvideo',  # انتخاب بهترین کیفیت
+        'noplaylist': True,  # فقط ویدیو یکسان را بگیرد، نه لیست پخش
+        'quiet': True  # خاموش کردن نمایش اطلاعات اضافی
+    }
 
-    keyboard = [
-        [InlineKeyboardButton(format, callback_data=f"download_{format.replace(' ', '_').lower()}_{video_index}") for format in formats]
-    ]
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        result = ydl.extract_info(selected_video['url'], download=False)  # فقط اطلاعات را استخراج می‌کند
+        formats = result.get('formats', [])
+
+    # ساخت دکمه‌های فرمت
+    if not formats:
+        await query.message.edit_text("❌ متاسفانه فرمت‌های قابل دانلود برای این ویدیو موجود نیست.")
+        await query.answer()
+        return
+
+    keyboard = []
+    for f in formats:
+        format_str = f'{f["ext"]} {f["height"] if "height" in f else ""}'  # نمایش فرمت به صورت 'mp4 360p' یا 'mp3'
+        format_callback = f"download_{f['format_id']}_{video_index}"  # ID فرمت برای دانلود
+        keyboard.append([InlineKeyboardButton(format_str, callback_data=format_callback)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.edit_text(f"ویدیوی انتخابی: {selected_video['title']}\n\nلطفاً فرمت {file_type} مورد نظر خود را انتخاب کنید:",
+    await query.message.edit_text(f"ویدیوی انتخابی: {selected_video['title']}\n\nلطفاً فرمت مورد نظر خود را انتخاب کنید:",
                                   reply_markup=reply_markup)
     await query.answer()
-
 
 # تابع ارسال لینک دانلود
 async def send_download_link(update: Update, context: CallbackContext):
     query = update.callback_query
     data = query.data
-    format_type, video_index = data.split("_")[1], int(data.split("_")[2])  # جدا کردن فرمت و ایندکس
+    
+    # استخراج فرمت و ایندکس ویدیو
+    parts = data.split("_")
+    format_id = parts[1]  # ID فرمت
+    video_index = int(parts[2])  # ایندکس ویدیو
+
     selected_video = user_search_results[query.message.chat_id][video_index]
 
     # استفاده از yt-dlp برای دریافت لینک دانلود
     ydl_opts = {
-        'format': format_type,  # انتخاب فرمت
+        'format': format_id,  # استفاده از ID فرمت برای انتخاب فرمت
         'outtmpl': '%(id)s.%(ext)s',  # مسیر ذخیره فایل (در اینجا فقط لینک دانلود داده می‌شود)
     }
 
@@ -167,7 +183,6 @@ async def send_download_link(update: Update, context: CallbackContext):
     else:
         await query.message.edit_text(f"❌ متاسفانه دانلود این ویدیو امکان‌پذیر نیست.")
     await query.answer()
-
 
 # تابع فیلتر پیام‌های غیرمجاز
 async def filter_invalid_message(update: Update, context: CallbackContext):
