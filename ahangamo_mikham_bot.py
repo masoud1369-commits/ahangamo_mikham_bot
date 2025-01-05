@@ -2,6 +2,8 @@ import logging
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
+import speedtest
+import os
 
 # فعال‌سازی لاگینگ
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -190,21 +192,21 @@ async def handle_speed_check_response(update: Update, context: CallbackContext):
     else:
         await query.message.reply_text("خیلی خوب، باشه! سراغ چیزهای دیگه میریم.")
 
-# اجرای ربات
-def main():
-    application = Application.builder().token(TOKEN).build()
+# اجرای تابع handler برای Vercel
+def handler(request):
+    app = Application.builder().token(TOKEN).build()
 
     # ثبت دستورات
-    application.add_handler(CommandHandler("start", send_welcome))
-    application.add_handler(CommandHandler("help", send_help))
-    application.add_handler(CommandHandler("search", search_video))
+    app.add_handler(CommandHandler("start", send_welcome))
+    app.add_handler(CommandHandler("help", send_help))
+    app.add_handler(CommandHandler("search", search_video))
 
     # ثبت CallbackQueryHandler
-    application.add_handler(CallbackQueryHandler(send_modified_link, pattern=r"video_\d+"))
-    application.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='yes_speed'))
-    application.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='no_speed'))
+    app.add_handler(CallbackQueryHandler(send_modified_link, pattern=r"video_\d+"))
+    app.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='yes_speed'))
+    app.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='no_speed'))
 
-    application.run_polling()
+    # اجرای برنامه به صورت سرورلس
+    app.run_polling(drop_pending_updates=True)  # برای استفاده در Vercel لازم نیست polling را اجرا کنید
 
-if __name__ == '__main__':
-    main()
+    return "Function executed successfully!"  # اینجا پاسخ دلخواه را برمی‌گردانیم
