@@ -1,34 +1,3 @@
-<<<<<<< HEAD
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "ahangamo_mikham_bot.py",
-      "use": "@vercel/python",
-      "runtime": "python3.9"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/ahangamo_mikham_bot.py"
-    }
-  ]
+  "version": 2
 }
-=======
-{
-  "version": 2,
-  "builds": [
-    {
-      "src": "ahangamo_mikham_bot.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/ahangamo_mikham_bot.py"
-    }
-  ]
-}
->>>>>>> a362645b2ef3d2f2a7b3eb8022a7990f1d5e3616
