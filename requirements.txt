@@ -1,2 +1,4 @@
-python-telegram-bot==20.3
-requests==2.31.0
+python-telegram-bot==20.0
+yt-dlp==2023.01.02
+requests==2.26.0
+speedtest-cli
