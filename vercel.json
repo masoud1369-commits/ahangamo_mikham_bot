@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "ahangamo_mikham_bot.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "pythonVersion": "3.13.1"
+      }
     }
   ],
   "routes": [
