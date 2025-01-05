@@ -1,11 +1,4 @@
-<<<<<<< HEAD
 python-telegram-bot==20.0
 yt-dlp==2023.01.02
 requests==2.26.0
 speedtest-cli
-=======
-python-telegram-bot==20.0
-yt-dlp==2023.01.02
-requests==2.26.0
-speedtest-cli
->>>>>>> a362645b2ef3d2f2a7b3eb8022a7990f1d5e3616
