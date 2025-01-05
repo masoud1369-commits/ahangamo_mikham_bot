@@ -206,7 +206,16 @@ def handler(request):
     app.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='yes_speed'))
     app.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='no_speed'))
 
-    # اجرای برنامه به صورت سرورلس
-    app.run_polling(drop_pending_updates=True)  # برای استفاده در Vercel لازم نیست polling را اجرا کنید
+     # تنظیم Webhook
+    # آدرس سرور شما در Vercel
+    webhook_url = f"https://{os.environ['VERCEL_URL']}/{TOKEN}"
 
-    return "Function executed successfully!"  # اینجا پاسخ دلخواه را برمی‌گردانیم
+    # راه‌اندازی Webhook
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 8443)),
+        url_path=TOKEN,
+        webhook_url=webhook_url
+    )
+
+    return "Function executed successfully!"
