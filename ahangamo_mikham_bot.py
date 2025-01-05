@@ -1,5 +1,6 @@
 import logging
 import requests
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
 import speedtest
@@ -112,7 +113,7 @@ async def search_video(update: Update, context: CallbackContext):
 async def display_search_results(update: Update, context: CallbackContext, video_results):
     logger.info("Displaying search results to user")
     keyboard = [
-        [InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}")] 
+        [InlineKeyboardButton(f"{i+1}. {video['title']}", callback_data=f"video_{i}")]
         for i, video in enumerate(video_results)
     ]
     keyboard.append([InlineKeyboardButton("🔄 جستجوی جدید", callback_data='new_search')])
@@ -206,16 +207,19 @@ def handler(request):
     app.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='yes_speed'))
     app.add_handler(CallbackQueryHandler(handle_speed_check_response, pattern='no_speed'))
 
-     # تنظیم Webhook
-    # آدرس سرور شما در Vercel
-    webhook_url = f"https://{os.environ['VERCEL_URL']}/{TOKEN}"
+    # تنظیم Flask برای Webhook
+    flask_app = Flask(__name__)
 
-    # راه‌اندازی Webhook
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8443)),
-        url_path=TOKEN,
-        webhook_url=webhook_url
-    )
+    @flask_app.route(f'/{TOKEN}', methods=['POST'])
+    def webhook():
+        json_str = request.get_data().decode("UTF-8")
+        update = Update.de_json(json_str, app.bot)
+        app.process_update(update)
+        return "ok", 200
 
-    return "Function executed successfully!"
+    return flask_app
+
+if __name__ == '__main__':
+    # اجرای Flask برای Webhook
+    app = handler(None)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8443)))
